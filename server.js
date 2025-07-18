@@ -1,39 +1,54 @@
 const express = require('express');
 const cors = require('cors');
-const dns = require('dns');
 const bodyParser = require('body-parser');
+const dns = require('dns');
 const urlParser = require('url');
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
+app.use(express.static('public'));
 
-// In-memory "DB"
-const urls = [];
-
+// Homepage (optional)
 app.get('/', (req, res) => {
-  res.send('URL Shortener is running...');
+  res.sendFile(__dirname + '/public/index.html');
 });
 
+// In-memory database
+let urls = [];
+let id = 1;
+
+// POST: Shorten URL
 app.post('/api/shorturl', (req, res) => {
   const original_url = req.body.url;
 
-  // Validate using dns.lookup
+  // ✅ Regex: Must start with http:// or https://
+  const urlPattern = /^https?:\/\/[^ "]+$/;
+  if (!urlPattern.test(original_url)) {
+    return res.json({ error: 'invalid url' });
+  }
+
+  // ✅ Parse and lookup DNS
   const hostname = urlParser.parse(original_url).hostname;
-  dns.lookup(hostname, (err) => {
+
+  dns.lookup(hostname, (err, address) => {
     if (err) {
       return res.json({ error: 'invalid url' });
-    } else {
-      const short_url = urls.length + 1;
-      urls.push({ original_url, short_url });
-      res.json({ original_url, short_url });
     }
+
+    // Save and respond
+    const short_url = id++;
+    urls.push({ original_url, short_url });
+    res.json({ original_url, short_url });
   });
 });
 
+// GET: Redirect to original URL
 app.get('/api/shorturl/:short_url', (req, res) => {
-  const short = parseInt(req.params.short_url);
-  const entry = urls.find(u => u.short_url === short);
+  const short_url = parseInt(req.params.short_url);
+  const entry = urls.find(item => item.short_url === short_url);
 
   if (entry) {
     res.redirect(entry.original_url);
@@ -42,6 +57,7 @@ app.get('/api/shorturl/:short_url', (req, res) => {
   }
 });
 
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
